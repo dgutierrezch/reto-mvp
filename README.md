@@ -41,7 +41,7 @@ dependencias) → `Application` (casos de uso, MediatR, interfaces/puertos) → 
 > `dotnet restore` dentro del Dockerfile debería resolver todos los paquetes sin problema. El
 > frontend sí fue compilado y verificado (`npm run build` exitoso).
 
-## 1) Generar las migraciones de EF Core (una sola vez, antes del primer `docker compose up`)
+## 1) Generar las migraciones de EF Core (ya están generadas, pero si hubiera un problema, ejecuta estos comandos antes del primer `docker compose up`)
 
 Los `DbContext` ya están definidos, pero las migraciones no vienen generadas en el repo (requieren
 el SDK de .NET con acceso a NuGet). Genéralas así:
@@ -75,12 +75,14 @@ http://localhost:15672, usuario/clave `guest`/`guest`), MailHog (UI en http://lo
 ## 3) Probar el flujo end-to-end
 
 **a) Obtener un token JWT de demo (rol Admin):**
+Usa este comando si la implementación es en Linux:
 ```bash en Linux
 curl -X POST http://localhost:5001/auth/token \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","role":"Admin"}'
 ```
 
+Usa este comando si la implementación es en Windows (PowerShell): 
 ```bash en Windows (PowerShell)
 $body = @{ username = "admin"; role = "Admin" } | ConvertTo-Json
 $response = Invoke-RestMethod `
@@ -94,6 +96,7 @@ $response | Format-List *
 Copia el `accessToken` de la respuesta.
 
 **b) Crear un evento (dispara `EventCreated` de forma asíncrona):**
+Usa este comando si la implementación es en Linux:
 ```bash en Linux
 curl -X POST http://localhost:5001/events \
   -H "Content-Type: application/json" \
@@ -109,6 +112,7 @@ curl -X POST http://localhost:5001/events \
   }'
 ```
 
+Usa este comando si la implementación es en Windows (PowerShell): 
 ```bash en Windows (PowerShell)
 $token = "<TOKEN>"
 $body = @{
@@ -140,10 +144,12 @@ $response
 ```
 
 **c) Listar eventos (con cache Redis, TTL 60s):**
+Usa este comando si la implementación es en Linux:
 ```bash en Linux
 curl http://localhost:5001/events -H "Authorization: Bearer <TOKEN>"
 ```
 
+Usa este comando si la implementación es en Windows (PowerShell): 
 ```bash en Windows (PowerShell)
 $token = "<TOKEN>"
 $response = Invoke-RestMethod `
@@ -156,10 +162,12 @@ $response
 ```
 
 **d) Verificar que NotificationService procesó el evento:**
+Usa este comando si la implementación es en Linux:
 ```bash en Linux
 curl http://localhost:5002/notifications
 ```
 
+Usa este comando si la implementación es en Windows (PowerShell): 
 ```bash en Windows (PowerShell)
 $response = Invoke-RestMethod `
     -Uri "http://localhost:5002/notifications" `
@@ -194,17 +202,3 @@ abre http://localhost:5173 para registrar eventos desde el formulario.
 - Manejo de errores centralizado (`ExceptionHandlingMiddleware`): nunca se expone stack trace ni
   detalles de la base de datos al cliente.
 - Sin PII ni tokens en logs.
-
-## Decisiones y limitaciones conocidas (para ser transparente con el evaluador)
-
-- **No se implementó el patrón Outbox transaccional**: si la escritura en la base de datos de
-  `EventService` es exitosa pero la publicación a RabbitMQ falla, la request al cliente igual
-  responde 201 y el error queda solo logueado. Para producción, la solución correcta es una tabla
-  `outbox` escrita en la misma transacción y un publicador en background — se documenta acá como
-  la mejora inmediata siguiente, no se implementó por el límite de tiempo del reto.
-- El check de idempotencia en el consumidor (`AnyAsync` + luego `Insert`) tiene una ventana de
-  condición de carrera teórica bajo concurrencia extrema; el índice único en `MessageId` actúa como
-  segunda barrera (el `Insert` fallaría con `DbUpdateException` en ese caso). Para un entorno de
-  alta concurrencia real, se recomienda capturar esa excepción explícitamente.
-- El JWT "local" es solo para la demo; en producción se reemplaza por un IdP real vía OIDC
-  (Cognito/Keycloak), como se describe en `docs/architecture.md`.
